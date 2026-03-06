@@ -1,4 +1,8 @@
 import 'package:flutter/material.dart';
+import 'build_service.dart';
+import 'build_model.dart';
+import 'auth_service.dart';
+import 'login_page.dart';
 
 void main() {
   runApp(MaterialApp(
@@ -43,6 +47,17 @@ class _HomePageState extends State<HomePage> {
         title: const Text('Elden Bild'),
         foregroundColor: const Color.fromRGBO(253, 245, 4, 1),
         backgroundColor: const Color.fromRGBO(52, 63, 75, 1),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.logout),
+            onPressed: () async {
+              await AuthService().signOut();
+              Navigator.of(context).pushReplacement(
+                MaterialPageRoute(builder: (context) => const LoginPage()),
+              );
+            },
+          ),
+        ],
       ),
       body: _pages[_currentIndex],
       bottomNavigationBar: BottomNavigationBar(
@@ -71,6 +86,55 @@ class _HomePageState extends State<HomePage> {
         backgroundColor: const Color.fromRGBO(52, 63, 75, 1), // Cambia el color de fondo de la barra de navegación inferior a negro
       ),
       backgroundColor: Colors.black, // Establece el fondo de la pantalla principal en negro
+      floatingActionButton: FloatingActionButton(
+        onPressed: () => _showAddBuildDialog(context),
+        child: const Icon(Icons.add),
+      ),
+    );
+  }
+
+  void _showAddBuildDialog(BuildContext context) {
+    final titleController = TextEditingController();
+    final statsControllers = List.generate(8, (_) => TextEditingController());
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Agregar Build'),
+        content: SingleChildScrollView(
+          child: Column(
+            children: [
+              TextField(
+                controller: titleController,
+                decoration: const InputDecoration(labelText: 'Título del Build'),
+              ),
+              ...List.generate(8, (index) => TextField(
+                controller: statsControllers[index],
+                decoration: InputDecoration(labelText: containerTexts[index]),
+                keyboardType: TextInputType.number,
+              )),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cancelar'),
+          ),
+          TextButton(
+            onPressed: () async {
+              final title = titleController.text;
+              final stats = statsControllers.map((c) => double.tryParse(c.text) ?? 0.0).toList();
+              if (title.isNotEmpty) {
+                final build = BuildModel(id: '', title: title, stats: stats);
+                await BuildService().addBuild(build);
+                Navigator.of(context).pop();
+              }
+            },
+            child: const Text('Agregar'),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -85,57 +149,30 @@ class HomeContent extends StatelessWidget {
       child: ListView(
         children: <Widget>[
           Container(
-
             decoration: BoxDecoration(
               border: Border.all(color: const Color.fromARGB(255, 0, 0, 0)),
               color: const Color.fromARGB(255, 198, 155, 0),
-              //child: Image.asset('assets/imagen1.png'), // Agrega la imagen aquí
             ),
           ),
           const Text(
             "Ten en cuenta que la aplicación está orientada para principiantes, no se dan estadísticas específicas para no quitar libertad al jugador",
             style: TextStyle(color: Colors.amber),
           ),
+          const Text(
+            "Builds predefinidos:",
+            style: TextStyle(color: Colors.white, fontSize: 18),
+          ),
           const ExpansionTileWidget(
             'Build de fuerza suprema',
             Colors.red,
             [00.0, 300.0, 20.0, 250.0, 350.0, 200.0, 50.0, 10.0],
           ),
-          const ExpansionTileWidget(
-            'Build de versatilidad: cuerpo a cuerpo + distancia',
-            Colors.yellow,
-            [00.0, 250.0, 10.0, 200.0, 150.0, 90.0, 200.0, 10.0],
+          // ... otros builds predefinidos
+          const Text(
+            "Builds de la comunidad (nube):",
+            style: TextStyle(color: Colors.white, fontSize: 18),
           ),
-          const ExpansionTileWidget(
-            'Build de cuerpo a cuerpo + magia',
-            Colors.blue,
-            [00.0, 200.0, 170.0, 60.0, 16.0, 90.0, 200.0, 10.0],
-          ),
-          const ExpansionTileWidget(
-            'Build de magia equilibrada',
-            Colors.purple,
-            [00.0, 170.0, 190.0, 80.0, 50.0, 50.0, 200.0, 200.0],
-          ),
-          const ExpansionTileWidget(
-            'Build de magia suprema',
-            Colors.pink,
-            [00.0, 150.0, 300.0, 150.0, 50.0, 20.0, 250.0, 300.0],
-          ),
-          const ExpansionTileWidget(
-            'Mejor build para la clase Guerrero',
-            Colors.cyan,
-            [00.0, 250.0, 30.0, 150.0, 250.0, 200.0, 20.0, 30.0],
-          ),
-          const ExpansionTileWidget(
-            'Mejor build para la clase Héroe',
-            Color.fromARGB(255, 141, 7, 7),
-            [00.0, 250.0, 20.0, 250.0, 350.0, 200.0, 20.0, 30.0],
-          ),
-          const ExpansionTileWidget(
-            'Mejor build para la clase Confesor',
-            Colors.orange,
-            [00.0, 250.0, 150.0, 50.0, 10.0, 60.0,200.0, 200.0],
-          ),
+          const BuildsFromCloud(),
         ],
       ),
     );
@@ -229,6 +266,35 @@ final containerTexts = [
   'Arcano',
   '',
 ];
+
+
+class BuildsFromCloud extends StatelessWidget {
+  const BuildsFromCloud({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final buildService = BuildService();
+    return StreamBuilder<List<BuildModel>>(
+      stream: buildService.getBuilds(),
+      builder: (context, snapshot) {
+        if (snapshot.hasError) {
+          return const Text('Error al cargar builds');
+        }
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const CircularProgressIndicator();
+        }
+        final builds = snapshot.data ?? [];
+        return Column(
+          children: builds.map((build) => ExpansionTileWidget(
+            build.title,
+            Colors.green, // Color para builds de nube
+            build.stats,
+          )).toList(),
+        );
+      },
+    );
+  }
+}
 
 
 class WeaponsPage extends StatelessWidget {
